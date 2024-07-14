@@ -1,0 +1,142 @@
+---
+title: "Crop Prediction - MLA CIA 1"
+output:
+  word_document: default
+  pdf_document: default
+date: "2024-07-14"
+---
+
+
+```{r}
+# MLA  -  CIA 1 
+# Ramya R - 2327741
+```
+
+```{r}
+#Get libraries
+library(psych)
+library(ggplot2)
+library(DataExplorer)
+library(car)#scatterplot,vif
+library(lmtest)#autocorrelation
+library(Metrics)#loss/cost functions
+library(MASS)#stepAIC
+library(glmnet)
+library(dplyr)
+#Import data
+crop_yield=read.csv("/Users/ramyaravikumar/Downloads/crop_yield.csv", header=T)
+names(crop_yield)
+```
+```{r}
+#EDA 
+#Understanding data structure
+str(crop_yield)
+names(crop_yield)
+#Check for missingness
+plot_missing(crop_yield)
+#Variable standardization
+summary(crop_yield)
+#Feature Engineering
+var(crop_yield)
+#Understand distributions and correlations
+pairs.panels(crop_yield)
+plot_histogram(crop_yield)
+plot_density(crop_yield)
+plot_correlation(crop_yield)
+```
+```{r}
+set.seed(2345)
+crop_yield_mixed <- crop_yield[order(runif(nrow(crop_yield))), ]
+n_train <- round(0.7 * nrow(crop_yield))
+crop_yield_train <- crop_yield_mixed[1:n_train, ]
+crop_yield_test <- crop_yield_mixed[(n_train + 1):nrow(crop_yield), ]
+```
+```{r}
+#Build a full model
+full_model_Yield <- lm(Yield  ~.,data = crop_yield_train)
+summary(full_model_Yield)
+```
+```{r}
+#Feature selection using wrapper technique
+cy_step_Yield<-stepAIC(full_model_Yield,direction="backward")
+```
+```{r}
+#Build a slm model - Production
+lm_production<-lm(Yield~Production,data=crop_yield_train)
+summary(lm_production)
+```
+```{r}
+#Build a mlm model - Yield ~ Crop + Crop_Year + Season + State + Area + Production
+le_reduced<-lm(Yield ~ Crop + Crop_Year + Season + State + Area + Production,data=crop_yield_train)
+summary(le_reduced)
+```
+```{r}
+# Create model matrix (including dummy variables for State)
+X <- model.matrix(Yield ~ ., crop_yield)[, -1]  # Exclude the intercept term
+
+# Separate the target variable
+Y <- crop_yield$Yield
+# Define the lambda sequence
+lambda <- 10^seq(10, -2, length = 100)
+print(lambda)
+# Split the data into training and validation sets
+set.seed(567)
+part <- sample(2, nrow(X), replace = TRUE, prob = c(0.7, 0.3))
+X_train <- X[part == 1, ]
+X_cv <- X[part == 2, ]
+Y_train <- Y[part == 1]
+Y_cv <- Y[part == 2]
+# Perform Ridge regression
+ridge_reg <- glmnet(X_train, Y_train, alpha = 0, lambda = lambda)
+summary(ridge_reg)
+
+# Find the best lambda via cross-validation
+ridge_reg1 <- cv.glmnet(X_train, Y_train, alpha = 0)
+bestlam <- ridge_reg1$lambda.min
+print(bestlam)
+
+# Predict on the validation set
+ridge.pred <- predict(ridge_reg, s = bestlam, newx = X_cv)
+
+# Calculate mean squared error
+mse <- mean((Y_cv - ridge.pred)^2)
+print(paste("Mean Squared Error:", mse))
+
+# Calculate R2 value
+sst <- sum((Y_cv - mean(Y_cv))^2)
+sse <- sum((Y_cv - ridge.pred)^2)
+r2 <- 1 - (sse / sst)
+print(paste("R²:", r2))
+
+
+# Get the Ridge regression coefficients
+ridge.coef <- predict(ridge_reg, type = "coefficients", s = bestlam)
+print("Ridge Coefficients:")
+print(ridge.coef)
+
+# Perform Lasso regression
+lasso_reg <- glmnet(X_train, Y_train, alpha = 1, lambda = lambda)
+
+# Find the best lambda via cross-validation
+lasso_reg1 <- cv.glmnet(X_train, Y_train, alpha = 1)
+bestlam <- lasso_reg1$lambda.min
+
+# Predict on the validation set
+lasso.pred <- predict(lasso_reg, s = bestlam, newx = X_cv)
+
+# Calculate mean squared error
+mse <- mean((Y_cv - lasso.pred)^2)
+print(paste("Mean Squared Error:", mse))
+
+# Calculate R2 value
+sst <- sum((Y_cv - mean(Y_cv))^2)
+sse <- sum((Y_cv - lasso.pred)^2)
+r2 <- 1 - (sse / sst)
+print(paste("R²:", r2))
+
+# Get the Lasso regression coefficients
+lasso.coef <- predict(lasso_reg, type = "coefficients", s = bestlam)
+print("Lasso Coefficients:")
+print(lasso.coef)
+```
+
